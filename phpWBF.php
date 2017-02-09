@@ -56,7 +56,7 @@ class phpWBF {
 	 @param string pMethod
 	 @param string pTarget
 	*/
-	protected function httpRequest($pArguments, $pMethod = 'POST', $pTarget = 'w/api.php') {
+	public function httpRequest($pArguments, $pMethod = 'POST', $pTarget = 'w/api.php') {
 		
 		// set base url
 		$baseURL = 'https://' . 
@@ -197,7 +197,7 @@ class phpWBF {
 	public function loginProfile($pProfile) {
 		$userinfo = posix_getpwuid(posix_getuid());
 		
-		$config = parse_ini_file($userinfo['dir'] . '/' . $pProfile . '.cnf');
+		$config = parse_ini_file($userinfo['dir'] . '/phpwbf-profile-' . $pProfile . '.cnf');
 		
 		$this->loginUser($config['user'], $config['password']);
 		unset($config, $userinfo);
@@ -296,6 +296,8 @@ class phpWBF {
 	
 	/*
 	 get embeddings of a page with their page content
+	 @param string/int pPage
+	 @param array pNs
 	*/	
 	public function getEmbeddingsContent($pPage, $pNs) {
 		
@@ -398,6 +400,8 @@ class phpWBF {
 	 make multidimensional array unique
 	 by Ghanshyam Katriya (anshkatriya at gmail)
 	 http://php.net/manual/de/function.array-unique.php#116302
+	 @param array array
+	 @param string key
 	*/
 	public function uniqueMultidimArray($array, $key) {
 		$temp_array = [];
@@ -436,7 +440,14 @@ class phpWBF {
 	}
 	
 	/*
-	 get embeddings of a page with their page content
+	 get members of a category with information about flagged revisions state
+	 @param array pPages
+	 @param string/value pPage
+	 @param array pNs
+	 @param array pType
+	 @param int pDepth
+	 @param bool pNoDupes
+	 @param array pVisited
 	*/	
 	public function getCategoryMembersFlaggedInfo(&$pPages, $pPage, $pNs, $pType, $pDepth = 0, $pNoDupes = false, &$pVisited = []) {
 		
