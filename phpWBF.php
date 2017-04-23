@@ -1,25 +1,25 @@
 <?php
 class phpWBF {
 	
-	/*
+	/* curlHandle
 	 contains the handle of the current curl session
 	 @var int
 	*/
 	protected $curlHandle;
 	
-	/*
+	/* site
 	 contains the current site name
 	 @var string
 	*/
 	protected $site;
 
-	/*
+	/* tokens
 	 protocol used for requests (https or http)
 	 @var string[string]
 	*/
 	protected $tokens = [];
 	
-	/*
+	/* __construct()
 	 class constructor
 	 initializes curl and the relevant class members
 	 @param string pSite
@@ -38,19 +38,22 @@ class phpWBF {
 		}
 	}
 	
-	/*
+	/* __destruct()
 	 class destructor
 	 closes curl
 	*/
 	public function __destruct() {
 		curl_close($this->curlHandle);
 	}
-	
+
+	/* log()
+	 log action
+	*/	
 	public function log($pText) {
 		echo "# (" . date('Y-m-d H:i:s') . ") . . " . $pText . "\r\n";
 	}
 	
-	/*
+	/* httpRequest()
 	 sends a http request to the MediaWiki api using curl
 	 @param array pArguments
 	 @param string pMethod
@@ -95,7 +98,7 @@ class phpWBF {
 		}
 		
 		// set curl options
-		curl_setopt($this->curlHandle, CURLOPT_USERAGENT, 'Test script -- de:User:Hgzh');
+		curl_setopt($this->curlHandle, CURLOPT_USERAGENT, 'phpWBF -- de:User:Hgzh');
 		curl_setopt($this->curlHandle, CURLOPT_URL, $requestURL);
 		curl_setopt($this->curlHandle, CURLOPT_ENCODING, "UTF-8");
 		curl_setopt($this->curlHandle, CURLOPT_RETURNTRANSFER, true);
@@ -120,7 +123,7 @@ class phpWBF {
 		return $rqResult;
 	}
 	
-	/*
+	/* requireToken()
 	 managing tokens
 	 @param string pType
 	 @param boolean pForceUpdate
@@ -159,7 +162,7 @@ class phpWBF {
 		}
 	}
 	
-	/*
+	/* loginUser()
 	 performs a login to a MediaWiki site
 	 @param string pUsername
 	 @param string pPassword
@@ -190,7 +193,7 @@ class phpWBF {
 		}
 	}
 	
-	/*
+	/* loginProfile()
 	 performs a login to a MediaWiki site using profile data
 	 @param string pProfile
 	*/
@@ -203,7 +206,7 @@ class phpWBF {
 		unset($config, $userinfo);
 	}
 	
-	/*
+	/* logoutUser()
 	 closes the current login on a MediaWiki site
 	*/
 	public function logoutUser() {
@@ -216,7 +219,7 @@ class phpWBF {
 		
 	}
 
-	/*
+	/* getWikitext()
 	 get the wikitext of given page
 	 @param string/int pPage
 	 @param int pOldID
@@ -259,7 +262,7 @@ class phpWBF {
 		
 	}
 	
-	/*
+	/* editPage()
 	 performs an edit on a MediaWiki page
 	 @param string pTitle
 	 @param string pNewText
@@ -294,7 +297,7 @@ class phpWBF {
 		
 	}
 	
-	/*
+	/* getEmbeddingsContent()
 	 get embeddings of a page with their page content
 	 @param string/int pPage
 	 @param array pNs
@@ -396,7 +399,7 @@ class phpWBF {
 		return $pages;
 	}
 	
-	/*
+	/* uniqueMultidimArray()
 	 make multidimensional array unique
 	 by Ghanshyam Katriya (anshkatriya at gmail)
 	 http://php.net/manual/de/function.array-unique.php#116302
@@ -418,7 +421,7 @@ class phpWBF {
 		return $temp_array;
 	}
 	
-	/*
+	/* sortMultidimArray()
 	 sort multidimensional array
 	 by jimpoz at jimpoz dot com
 	 http://de2.php.net/manual/de/function.array-multisort.php#100534
@@ -439,7 +442,7 @@ class phpWBF {
 		return array_pop($args);
 	}
 	
-	/*
+	/* getCategoryMembersFlaggedInfo()
 	 get members of a category with information about flagged revisions state
 	 @param array pPages
 	 @param string/value pPage
@@ -579,6 +582,102 @@ class phpWBF {
 		if ($pNoDupes == true) {
 			$pPages = $this->uniqueMultidimArray($pPages, 'id');
 		}
+	}
+
+	/* getUnconnectedPages()
+	 get unconnected pages on the wiki
+	 @param array pNs
+	 @param int pLimit
+	 @param int pStartOffset
+	 @param bool pSkipIwlinks
+	*/		
+	public function getUnconnectedPages($pNs, $pLimit = 1, $pStartOffset = 0, $pSkipIwlinks = true) {
+		$pages     = [];
+		$tree      = [];
+		$cont      = [];
+		$i     	   = 0;
+		$qContinue = false;
+		
+		// initial request
+		$stRequest = [
+				'action'     	=> 'query',
+				'list'  		=> 'querypage',
+				'qppage'       	=> 'UnconnectedPages',
+				'qpoffset'      => $pStartOffset,
+				'formatversion' => 2,
+			];
+		
+		// limit
+		if ($pLimit > 500) {
+			$stRequest['qplimit'] = 'max';
+		} else {
+			$stRequest['qplimit'] = $pLimit;
+		}
+		
+		$request = $stRequest;		
+		do {
+			// perform request
+			try {
+				$result = $this->httpRequest($request, 'GET');
+			} catch (Exception $e) {
+				throw $e;
+			}
+			unset($tree);
+			$tree = json_decode($result, true);
+			
+			// continuation
+			if (isset($tree['batchcomplete'])) {
+				unset($cont);
+			}
+			if (isset($tree['continue'])) {
+				foreach ($tree['continue'] as $qcKey => $qcVal) {
+					$cont[$qcKey] = $qcVal;
+				}
+			}
+			if (isset($cont['continue'])) {
+				$qContinue = true;
+				$request   = $stRequest;
+				foreach ($cont as $qcKey => $qcVal) {
+					$request[$qcKey] = $qcVal;
+				}
+			} else {
+				$qContinue = false;
+			}
+			
+			if (!isset($tree['query']['querypage']['results'])) {
+				continue;
+			}
+			
+			// get information
+			foreach ($tree['query']['querypage']['results'] as $item) {
+				
+				// check namespace
+				if (array_search($item['ns'], $pNs) === false) {
+					continue;
+				}
+				
+				// check iwlinks
+				if ($pSkipIwlinks === true && $item['databaseResult']['page_num_iwlinks'] > 0) {
+					continue;
+				}
+				
+				// append list
+				$pages[$i]['id']    = $item['value'];
+				$pages[$i]['ns']    = $item['ns'];
+				$pages[$i]['title'] = $item['title'];
+				
+				$i++;
+				
+				// check for limit
+				if ($i = $pLimit) {
+					break 2;
+				}
+				
+			}
+			
+		} while ($qContinue == true);
+		
+		return $pages;
 	}
 	
 }
