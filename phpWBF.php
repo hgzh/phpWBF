@@ -54,40 +54,22 @@ class phpWBF {
 	}
 	
 	/* httpRequest()
-	 sends a http request to the MediaWiki api using curl
+	 sends a http request using curl
 	 @param array pArguments
-	 @param string pMethod
 	 @param string pTarget
+	 @param string pMethod
 	*/
-	public function httpRequest($pArguments, $pMethod = 'POST', $pTarget = 'w/api.php') {
+	public function httpRequest($pArguments, $pTarget, $pMethod = 'POST') {
 		
-		// set base url
-		$baseURL = 'https://' . 
-				   $this->site . '/' . 
-				   $pTarget;
-		
-		// parse argument string
-		if (is_array($pArguments)) {
-			$argString = 'format=json';
-			foreach ($pArguments as $key => $val) {
-				$argString .= '&' . strtolower($key);
-				$argString .= '=' . $val;
-			}
-		} elseif (is_string($pArguments)) {
-			$argString = $pArguments;
-		} else {
-			throw new Exception('unknown argument type');
-		}
-						
 		// extend request with arguments
 		$pMethod = strtoupper($pMethod);
-		if ($argString !== '') {
+		if ($pArguments !== '') {
 			if ($pMethod === 'POST') {
-				$requestURL = $baseURL;
-				$postFields = $argString;
+				$requestURL = $pTarget;
+				$postFields = $pArguments;
 			} elseif ($pMethod === 'GET') {
-				$requestURL = $baseURL . '?' .
-							  $argString;
+				$requestURL = $pTarget . '?' .
+							  $pArguments;
 			} else {
 				throw new Exception('unknown http request method.');
 			}
@@ -100,7 +82,7 @@ class phpWBF {
 		// set curl options
 		curl_setopt($this->curlHandle, CURLOPT_USERAGENT, 'phpWBF -- de:User:Hgzh');
 		curl_setopt($this->curlHandle, CURLOPT_URL, $requestURL);
-		curl_setopt($this->curlHandle, CURLOPT_ENCODING, "UTF-8");
+		curl_setopt($this->curlHandle, CURLOPT_ENCODING, 'UTF-8');
 		curl_setopt($this->curlHandle, CURLOPT_RETURNTRANSFER, true);
 		curl_setopt($this->curlHandle, CURLOPT_COOKIEFILE, realpath('Cookies.tmp'));
 		curl_setopt($this->curlHandle, CURLOPT_COOKIEJAR, realpath('Cookies.tmp'));
@@ -122,6 +104,70 @@ class phpWBF {
 		
 		return $rqResult;
 	}
+
+	/* mwApiRequest()
+	 sends a GET request to the MediaWiki action api
+	 @param array pArguments
+	 @param string pMethod
+	*/	
+	private function mwApiRequest($pArguments, $pMethod) {
+	
+		// parse argument string
+		if (is_array($pArguments)) {
+			$arg = 'format=json';
+			foreach ($pArguments as $key => $val) {
+				$arg .= '&' . strtolower($key);
+				$arg .= '=' . $val;
+			}
+		} else {
+			throw new Exception('unknown argument type');
+		}
+		
+		$url = 'https://' . $this->site . '/w/api.php';
+		
+		$result = $this->httpRequest($arg, $url, $pMethod);
+		$tree   = json_decode($result, true);
+		
+		return $tree;
+		
+	}
+	
+	/* mwApiGet()
+	 sends a GET request to the MediaWiki action api
+	 @param array pArguments
+	*/	
+	public function mwApiGet($pArguments) {
+		return $this->mwApiRequest($pArguments, 'GET');
+	}
+
+	/* mwApiPost()
+	 sends a POST request to the MediaWiki action api
+	 @param array pArguments
+	*/	
+	public function mwApiPost($pArguments) {
+		return $this->mwApiRequest($pArguments, 'POST');	
+	}
+
+	/* mwApiGetContinuation()
+	 handles the continuation service of the MediaWiki api
+	 @param array pRequest
+	 @param array pResult
+	 @returns continued request
+	*/		
+	public function mwApiGetContinuation($pRequest, $pResult) {
+	
+		if (isset($pResult['continue'])) {
+			$request = $pRequest;
+			foreach ($pResult['continue'] as $k => $v) {
+				$request[$k] = $v;
+			}
+		} else {
+			$request = false;
+		}
+		
+		return $request;
+		
+	}
 	
 	/* requireToken()
 	 managing tokens
@@ -139,18 +185,12 @@ class phpWBF {
 				
 		if (!isset($this->tokens[$pType]) || $this->tokens[$pType] == '' || $pForceUpdate === true) {
 			// new token
-			try {
-				$result = $this->httpRequest([
-						'action' => 'query',
-						'meta'   => 'tokens',
-						'type'   => $pType
-					],
-					'GET');
-			} catch (Exception $e) {
-				throw $e;
-			}
-			$tree  = json_decode($result, true);			
-			$token = $tree['query']['tokens'][$pType . 'token'];
+			$result = $this->mwApiGet([
+				'action' => 'query',
+				'meta'   => 'tokens',
+				'type'   => $pType
+			]);
+			$token = $result['query']['tokens'][$pType . 'token'];
 			if ($token === '') {
 				throw new Exception('requireToken: no ' . $pType . 'token received.');
 			}
@@ -172,18 +212,13 @@ class phpWBF {
 		$this->requireToken('login');
 		
 		// perform login
-		try {
-			$result = $this->httpRequest([
-					'action'     => 'login',
-					'lgname'     => urlencode($pUsername),
-					'lgpassword' => urlencode($pPassword),
-					'lgtoken'    => $this->tokens['login']
-				]);
-		} catch (Exception $e) {
-			throw $e;
-		}
-		$tree     = json_decode($result, true);
-		$lgResult = $tree['login']['result'];
+		$result = $this->mwApiPost([
+			'action'     => 'login',
+			'lgname'     => urlencode($pUsername),
+			'lgpassword' => urlencode($pPassword),
+			'lgtoken'    => $this->tokens['login']
+		]);
+		$lgResult = $result['login']['result'];
 		
 		// manage result
 		if ($lgResult == 'Success') {
@@ -211,11 +246,7 @@ class phpWBF {
 	*/
 	public function logoutUser() {
 		
-		try {
-			$this->httpRequest(['action' => 'logout']);
-		} catch (Exception $e) {
-			throw $e;
-		}
+		$this->mwApiPost(['action' => 'logout']);
 		
 	}
 
@@ -229,10 +260,10 @@ class phpWBF {
 		
 		// build basic request
 		$request = [
-						'action'  		=> 'parse',
-						'prop'		    => 'wikitext',
-						'formatversion' => 2
-					];
+			'action'  		=> 'parse',
+			'prop'		    => 'wikitext',
+			'formatversion' => 2
+		];
 		
 		// page title, pageid or oldid
 		if ($pOldID > 0) {
@@ -249,13 +280,8 @@ class phpWBF {
 		}
 		
 		// perform request
-		try {
-			$result = $this->httpRequest($request);
-		} catch (Exception $e) {
-			throw $e;
-		}
-		$tree = json_decode($result, true);
-		$text = $tree['parse']['wikitext'];
+		$result = $this->mwApiGet($request);
+		$text = $result['parse']['wikitext'];
 		
 		// return
 		return $text;
@@ -274,19 +300,15 @@ class phpWBF {
 		
 		// perform edit
 		$request = [
-						'action'  => 'edit',
-						'title'   => urlencode($pTitle),
-						'text'    => urlencode($pNewText),
-						'token'   => $this->tokens['csrf'],
-						'summary' => urlencode($pSummary)
-					];
-		try {
-			$result = $this->httpRequest($request);
-		} catch (Exception $e) {
-			throw $e;
-		}
-		$tree    = json_decode($result, true);
-		$editres = $tree['edit']['result'];
+			'action'  => 'edit',
+			'title'   => urlencode($pTitle),
+			'text'    => urlencode($pNewText),
+			'token'   => $this->tokens['csrf'],
+			'summary' => urlencode($pSummary)
+		];
+		
+		$result = $this->mwApiPost($request);
+		$editres = $result['edit']['result'];
 		
 		// manage result
 		if ($editres == 'Success') {
@@ -305,21 +327,18 @@ class phpWBF {
 	public function getEmbeddingsContent($pPage, $pNs) {
 		
 		$pages     = [];
-		$tree      = [];
-		$cont      = [];
 		$i     	   = 0;
-		$qContinue = false;
 		
 		// initial request
 		$stRequest = [
-				'action'     	=> 'query',
-				'generator'  	=> 'embeddedin',
-				'prop'       	=> 'revisions',
-				'rvprop'        => 'content',
-				'formatversion' => 2,
-				'geilimit'      => 100,
-			];
-					
+			'action'     	=> 'query',
+			'generator'  	=> 'embeddedin',
+			'prop'       	=> 'revisions',
+			'rvprop'        => 'content',
+			'formatversion' => 2,
+			'geilimit'      => 100,
+		];
+
 		// page title or pageid
 		if (is_numeric($pPage)) {
 			$stRequest['geipageid'] = $pPage;
@@ -341,39 +360,17 @@ class phpWBF {
 		$request = $stRequest;		
 		do {
 			// perform request
-			try {
-				$result = $this->httpRequest($request, 'GET');
-			} catch (Exception $e) {
-				throw $e;
-			}
-			unset($tree);
-			$tree = json_decode($result, true);
+			$result = $this->mwApiGet($request);
 			
 			// continuation
-			if (isset($tree['batchcomplete'])) {
-				unset($cont);
-			}
-			if (isset($tree['continue'])) {
-				foreach ($tree['continue'] as $qcKey => $qcVal) {
-					$cont[$qcKey] = $qcVal;
-				}
-			}
-			if (isset($cont['continue'])) {
-				$qContinue = true;
-				$request   = $stRequest;
-				foreach ($cont as $qcKey => $qcVal) {
-					$request[$qcKey] = $qcVal;
-				}
-			} else {
-				$qContinue = false;
-			}
+			$request = $this->mwApiGetContinuation($stRequest, $result);
 			
-			if (!isset($tree['query']['pages'])) {
+			if (!isset($result['query']['pages'])) {
 				continue;
 			}
 			
 			// get page information
-			foreach ($tree['query']['pages'] as $item) {
+			foreach ($result['query']['pages'] as $item) {
 				// check if text given
 				if (!isset($item['revisions'])) {
 					continue;
@@ -394,7 +391,7 @@ class phpWBF {
 				$i++;
 			}
 			
-		} while ($qContinue == true);
+		} while ($request != false);
 		
 		return $pages;
 	}
@@ -465,12 +462,12 @@ class phpWBF {
 		
 		// initial request
 		$stRequest = [
-				'action'     	=> 'query',
-				'generator'  	=> 'categorymembers',
-				'prop'       	=> 'flagged',
-				'formatversion' => 2,
-				'gcmlimit'      => 500,
-			];
+			'action'     	=> 'query',
+			'generator'  	=> 'categorymembers',
+			'prop'       	=> 'flagged',
+			'formatversion' => 2,
+			'gcmlimit'      => 500,
+		];
 					
 		// page title or pageid
 		if (is_numeric($pPage)) {
@@ -504,21 +501,14 @@ class phpWBF {
 		$request = $stRequest;
 		do {						
 			// perform request
-			
-			try {
-				$result = $this->httpRequest($request, 'GET');
-			} catch (Exception $e) {
-				throw $e;
-			}
-			unset($tree);
-			$tree = json_decode($result, true);
+			$result = $this->mwApiGet($request);
 			
 			// continuation
-			if (isset($tree['batchcomplete'])) {
+			if (isset($result['batchcomplete'])) {
 				unset($cont);
 			}
-			if (isset($tree['continue'])) {
-				foreach ($tree['continue'] as $qcKey => $qcVal) {
+			if (isset($result['continue'])) {
+				foreach ($result['continue'] as $qcKey => $qcVal) {
 					$cont[$qcKey] = $qcVal;
 				}
 			}
@@ -532,12 +522,12 @@ class phpWBF {
 				$qContinue = false;
 			}
 			
-			if (!isset($tree['query']['pages'])) {
+			if (!isset($result['query']['pages'])) {
 				continue;
 			}
 			
 			// get page information
-			foreach ($tree['query']['pages'] as $item) {
+			foreach ($result['query']['pages'] as $item) {
 				
 				// step into subcat
 				if ($pDepth > 0 && $item['ns'] == 14) {
@@ -600,12 +590,12 @@ class phpWBF {
 		
 		// initial request
 		$stRequest = [
-				'action'     	=> 'query',
-				'list'  		=> 'querypage',
-				'qppage'       	=> 'UnconnectedPages',
-				'qpoffset'      => $pStartOffset,
-				'formatversion' => 2,
-			];
+			'action'     	=> 'query',
+			'list'  		=> 'querypage',
+			'qppage'       	=> 'UnconnectedPages',
+			'qpoffset'      => $pStartOffset,
+			'formatversion' => 2,
+		];
 		
 		// limit
 		if ($pLimit > 500) {
@@ -617,20 +607,14 @@ class phpWBF {
 		$request = $stRequest;		
 		do {
 			// perform request
-			try {
-				$result = $this->httpRequest($request, 'GET');
-			} catch (Exception $e) {
-				throw $e;
-			}
-			unset($tree);
-			$tree = json_decode($result, true);
+			$result = $this->mwApiGet($request);
 			
 			// continuation
-			if (isset($tree['batchcomplete'])) {
+			if (isset($result['batchcomplete'])) {
 				unset($cont);
 			}
-			if (isset($tree['continue'])) {
-				foreach ($tree['continue'] as $qcKey => $qcVal) {
+			if (isset($result['continue'])) {
+				foreach ($result['continue'] as $qcKey => $qcVal) {
 					$cont[$qcKey] = $qcVal;
 				}
 			}
@@ -644,12 +628,12 @@ class phpWBF {
 				$qContinue = false;
 			}
 			
-			if (!isset($tree['query']['querypage']['results'])) {
+			if (!isset($result['query']['querypage']['results'])) {
 				continue;
 			}
 			
 			// get information
-			foreach ($tree['query']['querypage']['results'] as $item) {
+			foreach ($result['query']['querypage']['results'] as $item) {
 				
 				// check namespace
 				if (array_search($item['ns'], $pNs) === false) {
@@ -669,7 +653,7 @@ class phpWBF {
 				$i++;
 				
 				// check for limit
-				if ($i = $pLimit) {
+				if ($i == $pLimit) {
 					break 2;
 				}
 				
