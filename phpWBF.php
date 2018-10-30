@@ -78,7 +78,7 @@ class phpWBF {
 		if (!$requestURL) {
 			throw new Exception('no arguments for http request found.');
 		}
-		
+				
 		// set curl options
 		curl_setopt($this->curlHandle, CURLOPT_USERAGENT, 'phpWBF -- de:User:Hgzh');
 		curl_setopt($this->curlHandle, CURLOPT_URL, $requestURL);
@@ -166,6 +166,19 @@ class phpWBF {
 		}
 		
 		return $request;
+		
+	}
+	
+	/* toolPetscanPost()
+	 sends a GET request to the Petscan tool on wmflabs
+	 @param string pQuery
+	*/	
+	public function toolPetscanPost($pQuery) {
+				
+		$result = $this->httpRequest($pQuery, 'https://petscan.wmflabs.org', 'POST');
+		$tree   = json_decode($result, true);
+				
+		return $tree;
 		
 	}
 	
