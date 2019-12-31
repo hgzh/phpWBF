@@ -317,7 +317,8 @@ class phpWBF {
 			'title'   => urlencode($pTitle),
 			'text'    => urlencode($pNewText),
 			'token'   => $this->tokens['csrf'],
-			'summary' => urlencode($pSummary)
+			'summary' => urlencode($pSummary),
+			'bot'     => 1
 		];
 		
 		$result = $this->mwApiPost($request);
@@ -673,6 +674,58 @@ class phpWBF {
 			}
 			
 		} while ($qContinue == true);
+		
+		return $pages;
+	}
+	
+	/* getSearchResults()
+	 get search results from the wiki
+	 @param string pQuery
+	 @param array pNs
+	*/		
+	public function getSearchResults($pQuery, $pNs) {
+		$pages     = [];
+		$tree      = [];
+		$cont      = [];
+		$i     	   = 0;
+		$qContinue = false;
+		
+		// initial request
+		$stRequest = [
+			'action'     	=> 'query',
+			'list'  		=> 'search',
+			'srsearch'      => urlencode($pQuery),
+			'srlimit'       => 'max',
+			'srprop'        => '',
+			'formatversion' => 2,
+		];
+		
+		$request = $stRequest;		
+		do {
+			// perform request
+			$result = $this->mwApiGet($request);
+			
+			// continuation
+			$request = $this->mwApiGetContinuation($stRequest, $result);
+			
+			// get information
+			foreach ($result['query']['search'] as $item) {
+				
+				// check namespace
+				if (array_search($item['ns'], $pNs) === false) {
+					continue;
+				}
+				
+				// append list
+				$pages[$i]['id']    = $item['pageid'];
+				$pages[$i]['ns']    = $item['ns'];
+				$pages[$i]['title'] = $item['title'];
+				
+				$i++;
+		
+			}
+			
+		} while ($request != false);
 		
 		return $pages;
 	}
