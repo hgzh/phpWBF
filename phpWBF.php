@@ -169,6 +169,20 @@ class phpWBF {
 		
 	}
 	
+	/* mwRawGet()
+	 sends a GET request to action=raw
+	 @param string pTitle
+	 @param string pCtype
+	*/	
+	public function mwRawGet($pTitle, $pCtype) {
+		
+		$url    = 'https://' . $this->site . '/w/index.php';
+		$result = $this->httpRequest('action=raw&title=' . urlencode($pTitle) . '&ctype=' . $pCtype, $url, 'POST');
+		
+		return $result;
+		
+	}	
+	
 	/* toolPetscanPost()
 	 sends a GET request to the Petscan tool on wmflabs
 	 @param string pQuery
@@ -451,141 +465,6 @@ class phpWBF {
 		$args[] = &$data;
 		call_user_func_array('array_multisort', $args);
 		return array_pop($args);
-	}
-	
-	/* getCategoryMembersFlaggedInfo()
-	 get members of a category with information about flagged revisions state
-	 @param array pPages
-	 @param string/value pPage
-	 @param array pNs
-	 @param array pType
-	 @param int pDepth
-	 @param bool pNoDupes
-	 @param array pVisited
-	*/	
-	public function getCategoryMembersFlaggedInfo(&$pPages, $pPage, $pNs, $pType, $pDepth = 0, $pNoDupes = false, &$pVisited = []) {
-		
-		$pages     = [];
-		$tree      = [];
-		$cont      = [];
-		$i     	   = 0;
-		$qContinue = false;
-		
-		$datenowO = new DateTime();
-		$datenow = $datenowO->getTimestamp();
-		
-		// initial request
-		$stRequest = [
-			'action'     	=> 'query',
-			'generator'  	=> 'categorymembers',
-			'prop'       	=> 'flagged',
-			'formatversion' => 2,
-			'gcmlimit'      => 500,
-		];
-					
-		// page title or pageid
-		if (is_numeric($pPage)) {
-			$stRequest['gcmpageid'] = $pPage;
-		} elseif (is_string($pPage)) {
-			$stRequest['gcmtitle'] = urlencode($pPage);
-		}
-		
-		// namespaces
-		$ns = '';
-		foreach ($pNs as $val) {
-			$ns .= $val . '|';
-		}
-		$ns = trim($ns, '|');
-		if ($ns == '') {
-			$ns = '*';
-		}
-		$stRequest['gcmnamespace'] = $ns;
-		
-		// types (page, subcat, file)
-		$type = '';
-		foreach ($pType as $val) {
-			$type .= $val . '|';
-		}
-		$type = trim($type, '|');
-		if ($type == '') {
-			$type = 'page|subcat|file';
-		}
-		$stRequest['gcmtype'] = $type;
-		
-		$request = $stRequest;
-		do {						
-			// perform request
-			$result = $this->mwApiGet($request);
-			
-			// continuation
-			if (isset($result['batchcomplete'])) {
-				unset($cont);
-			}
-			if (isset($result['continue'])) {
-				foreach ($result['continue'] as $qcKey => $qcVal) {
-					$cont[$qcKey] = $qcVal;
-				}
-			}
-			if (isset($cont['continue'])) {
-				$qContinue = true;
-				$request   = $stRequest;
-				foreach ($cont as $qcKey => $qcVal) {
-					$request[$qcKey] = $qcVal;
-				}
-			} else {
-				$qContinue = false;
-			}
-			
-			if (!isset($result['query']['pages'])) {
-				continue;
-			}
-			
-			// get page information
-			foreach ($result['query']['pages'] as $item) {
-				
-				// step into subcat
-				if ($pDepth > 0 && $item['ns'] == 14) {
-					$visited = false;
-					foreach ($pVisited as $k => $v) {
-						if ($v == $item['pageid']) {
-							$visited = true;
-						}
-					}
-					if ($visited == false) {
-						$this->getCategoryMembersFlaggedInfo($pPages, $item['title'], $pNs, $pType, $pDepth - 1, $pNoDupes, $pVisited);
-						$pVisited[] = $item['pageid'];
-					}
-				}
-				
-				unset($add);
-				$add['title'] = $item['title'];
-				$add['ns']    = $item['ns'];
-				$add['id']    = $item['pageid'];
-				if (isset($item['flagged'])) {
-					if (isset($item['flagged']['pending_since'])) {
-						$add['old']      = true;
-						$add['oldsince'] = $item['flagged']['pending_since'];
-						$dateold = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $add['oldsince']);
-						$add['oldstamp'] = $dateold->getTimestamp();
-						unset($dateold);
-					} else {
-						$add['old']      = false;
-						$add['oldsince'] = false;
-						$add['oldstamp'] = $datenow;
-					}
-				} else {
-					$add['old']      = true;
-					$add['oldsince'] = false;
-					$add['oldstamp'] = 0;
-				}
-				$pPages[] = $add;
-			}
-			
-		} while ($qContinue == true);
-		
-		if ($pNoDupes == true) {
-			$pPages = $this->uniqueMultidimArray($pPages, 'id');
-		}
 	}
 
 	/* getUnconnectedPages()
