@@ -609,6 +609,31 @@ class phpWBF {
 		return $pages;
 	}
 	
+	/* purge()
+	 purges a list of pages
+	 @param array pTitles
+	 @param bool pForcelink
+	 @param bool pForcerecursivelink
+	*/		
+	public function purge($pTitles, $pForcelink = false, $pForcerecursivelink = false) {
+		
+		// initial request
+		$request = [
+			'action' => 'purge',
+			'titles' => implode('|', $pTitles)
+		];
+		
+		// parameters
+		if ($pForcelink === true) {
+			$request['forcelinkupdate'] = 1;
+		}
+		if ($pForcerecursivelink === true) {
+			$request['forcerecursivelinkupdate'] = 1;
+		}
+		
+		$this->mwApiPost($request);
+	}	
+	
 }
 
 ?>
